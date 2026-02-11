@@ -75,7 +75,7 @@
 
     <div id="ui-layer">
         <h1>COSMIC FLOW</h1>
-        <p>Drag: Launch Star | Right-Drag: Pan | Wheel: Zoom</p>
+        <p>Drag: Hold to create (Short=Asteroid, Med=Planet, Long=Star) | Right-Drag: Pan | Wheel: Zoom</p>
         <div class="controls">
             <button id="resetBtn">Reset Cosmos</button>
         </div>
@@ -91,15 +91,26 @@
             G: 0.1,                // Gravity constant
             FRICTION: 0.999,       // Minimal air resistance
             TRAIL_FADE: 0.15,      // Trail opacity
-            MIN_MASS: 2,
-            MAX_MASS: 25,
-            BLACK_HOLE_MASS: 50,   // Threshold for becoming a Black Hole
-            SUPERNOVA_MASS: 150,   // Threshold for explosion (Rebirth)
+
+            // Mass Thresholds
+            ASTEROID_MASS_LIMIT: 5,
+            PLANET_MASS_LIMIT: 20,
+            STAR_MASS_LIMIT: 80,
+            BLACK_HOLE_MASS: 80,   // Threshold for becoming a Black Hole (High!)
+            SUPERNOVA_MASS: 250,   // Threshold for explosion (Rebirth)
+
+            // Interaction
+            MIN_MASS: 1,           // Allow smaller inputs for asteroids
+            MAX_MASS: 100,         // Allow larger inputs for stars
+
             DENSITY: 0.6,          // Radius = (mass/density)^0.5
             LAUNCH_POWER: 0.05,    // Launch velocity multiplier
-            COLORS: [
-                '#a0c4ff', '#b9fbc0', '#fbf8cc', '#ffcfd2', '#f1c0e8', '#cfbaf0', '#90dbf4'
-            ]
+
+            COLORS: {
+                ASTEROID: ['#888888', '#aaaaaa', '#776655', '#998877'],
+                PLANET: ['#4da6ff', '#ff6b6b', '#6bff95', '#e0dfd5', '#ff9f43'],
+                STAR: ['#a0c4ff', '#b9fbc0', '#fbf8cc', '#ffcfd2', '#f1c0e8', '#cfbaf0', '#90dbf4']
+            }
         };
 
         const canvas = document.getElementById('cosmos');
@@ -164,18 +175,38 @@
                 this.vy = vy;
                 this.mass = mass;
                 this.updateProperties();
-                if (this.isBlackHole) {
-                    this.color = '#000000'; // Black core
-                    this.glowColor = '#330066'; // Dark purple Accretion disk
-                } else {
-                    this.color = CONFIG.COLORS[Math.floor(Math.random() * CONFIG.COLORS.length)];
+
+                // Color assignment based on type (only once)
+                if (this.type === 'BLACK_HOLE') {
+                    this.color = '#000000';
+                    this.glowColor = '#330066';
+                } else if (this.type === 'STAR') {
+                    this.color = CONFIG.COLORS.STAR[Math.floor(Math.random() * CONFIG.COLORS.STAR.length)];
+                } else if (this.type === 'PLANET') {
+                    this.color = CONFIG.COLORS.PLANET[Math.floor(Math.random() * CONFIG.COLORS.PLANET.length)];
+                } else { // ASTEROID
+                    this.color = CONFIG.COLORS.ASTEROID[Math.floor(Math.random() * CONFIG.COLORS.ASTEROID.length)];
                 }
             }
 
             updateProperties() {
-                this.isBlackHole = this.mass >= CONFIG.BLACK_HOLE_MASS;
-                // Black holes are denser
-                this.radius = Math.sqrt(this.mass / (this.isBlackHole ? CONFIG.DENSITY * 3 : CONFIG.DENSITY));
+                // Determine Type
+                if (this.mass >= CONFIG.BLACK_HOLE_MASS) {
+                    this.type = 'BLACK_HOLE';
+                } else if (this.mass > CONFIG.PLANET_MASS_LIMIT) {
+                    this.type = 'STAR';
+                } else if (this.mass > CONFIG.ASTEROID_MASS_LIMIT) {
+                    this.type = 'PLANET';
+                } else {
+                    this.type = 'ASTEROID';
+                }
+
+                // Radius Check
+                let density = CONFIG.DENSITY;
+                if (this.type === 'BLACK_HOLE') density *= 3; // Dense
+                if (this.type === 'PLANET') density *= 1.5;   // Rocky planets are dense-ish
+                this.radius = Math.sqrt(this.mass / density);
+                this.isBlackHole = (this.type === 'BLACK_HOLE'); // Keep for compatibility
             }
 
             update() {
@@ -187,7 +218,7 @@
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
 
-                if (this.isBlackHole) {
+                if (this.type === 'BLACK_HOLE') {
                     // Pulsating Accretion Disk
                     let pulse = 1.0 + Math.sin(Date.now() * 0.005) * 0.1;
                     ctx.shadowBlur = this.radius * 4 * pulse;
@@ -201,10 +232,27 @@
                     ctx.strokeStyle = 'rgba(200, 100, 255, 0.6)';
                     ctx.lineWidth = 2;
                     ctx.stroke();
-                } else {
+                } else if (this.type === 'STAR') {
+                    // STAR: Glowing
                     ctx.fillStyle = this.color;
                     ctx.shadowBlur = this.radius * 2;
                     ctx.shadowColor = this.color;
+                    ctx.fill();
+                } else if (this.type === 'PLANET') {
+                    // PLANET: No glow, solid
+                    ctx.fillStyle = this.color;
+                    ctx.shadowBlur = 0;
+                    ctx.fill();
+                    // Slight gradient for 3D effect?
+                    let grad = ctx.createRadialGradient(this.x - this.radius * 0.3, this.y - this.radius * 0.3, this.radius * 0.2, this.x, this.y, this.radius);
+                    grad.addColorStop(0, 'rgba(255,255,255,0.3)');
+                    grad.addColorStop(1, 'rgba(0,0,0,0.1)');
+                    ctx.fillStyle = grad;
+                    ctx.fill();
+                } else {
+                    // ASTEROID: Jagged? For now just small circle, rougher color
+                    ctx.fillStyle = this.color;
+                    ctx.shadowBlur = 0;
                     ctx.fill();
                 }
 
@@ -499,12 +547,27 @@
                 ctx.lineWidth = 1;
 
                 // Preview Mass
-                let duration = (Date.now() - mouse.dragStartTime) / 1000;
-                let massRatio = Math.min(duration / 2, 1);
-                let mass = CONFIG.MIN_MASS + (CONFIG.MAX_MASS - CONFIG.MIN_MASS) * massRatio;
-                let isBH = mass >= CONFIG.BLACK_HOLE_MASS; // User can't create BH directly usually unless MAX_MASS > BH_MASS
-                // But let's keep visual consistent
-                let previewRadius = Math.sqrt(mass / CONFIG.DENSITY);
+                let duration = (Date.now() - mouse.dragStartTime) / 1000; // Seconds
+                // Scale mass creation: 
+                // 0-0.5s -> Asteroid (1-5)
+                // 0.5-2.0s -> Planet (5-20)
+                // 2.0s+ -> Star (20-80)
+
+                let mass;
+                if (duration < 0.5) {
+                    mass = CONFIG.MIN_MASS + (CONFIG.ASTEROID_MASS_LIMIT - CONFIG.MIN_MASS) * (duration / 0.5);
+                } else if (duration < 2.0) {
+                    mass = CONFIG.ASTEROID_MASS_LIMIT + (CONFIG.PLANET_MASS_LIMIT - CONFIG.ASTEROID_MASS_LIMIT) * ((duration - 0.5) / 1.5);
+                } else {
+                    mass = CONFIG.PLANET_MASS_LIMIT + (CONFIG.STAR_MASS_LIMIT - CONFIG.PLANET_MASS_LIMIT) * Math.min((duration - 2.0) / 3.0, 1);
+                }
+
+                // Determine density for preview radius
+                let density = CONFIG.DENSITY;
+                if (mass > CONFIG.PLANET_MASS_LIMIT) density = CONFIG.DENSITY; // Star
+                else if (mass > CONFIG.ASTEROID_MASS_LIMIT) density = CONFIG.DENSITY * 1.5; // Planet
+
+                let previewRadius = Math.sqrt(mass / density);
 
                 ctx.beginPath();
                 ctx.arc(startWorld.x, startWorld.y, previewRadius, 0, Math.PI * 2);
@@ -567,8 +630,15 @@
                 let dy = mouse.startY - e.clientY;
 
                 let duration = (Date.now() - mouse.dragStartTime) / 1000;
-                let massRatio = Math.min(duration / 2, 1.0);
-                let mass = CONFIG.MIN_MASS + (CONFIG.MAX_MASS - CONFIG.MIN_MASS) * massRatio;
+
+                let mass;
+                if (duration < 0.5) {
+                    mass = CONFIG.MIN_MASS + (CONFIG.ASTEROID_MASS_LIMIT - CONFIG.MIN_MASS) * (duration / 0.5);
+                } else if (duration < 2.0) {
+                    mass = CONFIG.ASTEROID_MASS_LIMIT + (CONFIG.PLANET_MASS_LIMIT - CONFIG.ASTEROID_MASS_LIMIT) * ((duration - 0.5) / 1.5);
+                } else {
+                    mass = CONFIG.PLANET_MASS_LIMIT + (CONFIG.STAR_MASS_LIMIT - CONFIG.PLANET_MASS_LIMIT) * Math.min((duration - 2.0) / 3.0, 1);
+                }
 
                 let worldPos = screenToWorld(mouse.startX, mouse.startY);
 
