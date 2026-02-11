@@ -259,6 +259,21 @@
                     }
                 }
 
+                // Solar Flares (for Stars)
+                if (this.type === 'STAR') {
+                    this.features.flares = [];
+                    let numFlares = 3 + Math.floor(Math.random() * 4);
+                    for (let i = 0; i < numFlares; i++) {
+                        this.features.flares.push({
+                            angle: (Math.PI * 2 * i) / numFlares,
+                            length: this.radius * (0.5 + Math.random() * 0.5),
+                            width: this.radius * 0.2,
+                            speed: 0.5 + Math.random(),
+                            phase: Math.random() * Math.PI
+                        });
+                    }
+                }
+
                 // Asteroid Shape (Jagged Polygon)
                 if (this.type === 'ASTEROID') {
                     this.features.vertices = [];
@@ -374,6 +389,58 @@
                     ctx.globalAlpha = 0.8;
                     ctx.fill();
                     ctx.globalAlpha = 1.0;
+
+                    // Solar Flares
+                    if (this.features.flares) {
+                        ctx.save();
+                        for (let f of this.features.flares) {
+                            let angle = f.angle + (Date.now() * f.speed * 0.001);
+                            let r = this.radius * (1.0 + Math.sin(Date.now() * 0.005 + f.phase) * 0.1);
+
+                            ctx.translate(Math.cos(angle) * r, Math.sin(angle) * r);
+                            ctx.rotate(angle + Math.PI / 2);
+
+                            ctx.beginPath();
+                            ctx.moveTo(0, 0);
+                            ctx.quadraticCurveTo(f.width, -f.length * 0.5, 0, -f.length);
+                            ctx.quadraticCurveTo(-f.width, -f.length * 0.5, 0, 0);
+                            ctx.fillStyle = this.color;
+                            ctx.globalAlpha = 0.6;
+                            ctx.fill();
+
+                            ctx.rotate(-(angle + Math.PI / 2));
+                            ctx.translate(-Math.cos(angle) * r, -Math.sin(angle) * r);
+                        }
+                        ctx.restore();
+                    }
+
+                    // Diffraction Spikes (Lens Flare) for Massive Stars
+                    if (this.mass > 50) {
+                        ctx.save();
+                        ctx.globalCompositeOperation = 'screen'; // Additive blending for light
+                        ctx.rotate(Date.now() * 0.0001); // Very slow rotation
+                        let spikeLen = this.radius * 4;
+                        let spikeW = this.radius * 0.2;
+
+                        ctx.fillStyle = this.color;
+                        ctx.globalAlpha = 0.3;
+
+                        // Vertical
+                        ctx.beginPath();
+                        ctx.moveTo(0, -spikeLen);
+                        ctx.quadraticCurveTo(spikeW, 0, 0, spikeLen);
+                        ctx.quadraticCurveTo(-spikeW, 0, 0, -spikeLen);
+                        ctx.fill();
+
+                        // Horizontal
+                        ctx.beginPath();
+                        ctx.moveTo(-spikeLen, 0);
+                        ctx.quadraticCurveTo(0, spikeW, spikeLen, 0);
+                        ctx.quadraticCurveTo(0, -spikeW, -spikeLen, 0);
+                        ctx.fill();
+
+                        ctx.restore();
+                    }
 
                 } else if (this.type === 'PLANET') {
                     ctx.rotate(this.rotation);
