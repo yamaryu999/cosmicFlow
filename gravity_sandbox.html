@@ -94,6 +94,7 @@
             MIN_MASS: 2,
             MAX_MASS: 25,
             BLACK_HOLE_MASS: 50,   // Threshold for becoming a Black Hole
+            SUPERNOVA_MASS: 150,   // Threshold for explosion (Rebirth)
             DENSITY: 0.6,          // Radius = (mass/density)^0.5
             LAUNCH_POWER: 0.05,    // Launch velocity multiplier
             COLORS: [
@@ -108,6 +109,7 @@
         let stars = [];
         let particles = [];
         let isPaused = false;
+        let flashIntensity = 0; // Screen flash for Supernova
 
         // Viewport transformation
         const view = {
@@ -147,6 +149,7 @@
             view.x = 0;
             view.y = 0;
             view.targetScale = 1.0;
+            flashIntensity = 0;
         }
         document.getElementById('resetBtn').addEventListener('click', reset);
 
@@ -185,16 +188,17 @@
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
 
                 if (this.isBlackHole) {
-                    // Draw Accretion Disk (Glow)
-                    ctx.shadowBlur = this.radius * 4;
-                    ctx.shadowColor = 'rgba(100, 0, 200, 0.8)';
+                    // Pulsating Accretion Disk
+                    let pulse = 1.0 + Math.sin(Date.now() * 0.005) * 0.1;
+                    ctx.shadowBlur = this.radius * 4 * pulse;
+                    ctx.shadowColor = 'rgba(120, 50, 255, 0.8)';
 
                     // Draw Event Horizon (Black)
                     ctx.fillStyle = '#000';
                     ctx.fill();
 
                     // Draw Outline
-                    ctx.strokeStyle = 'rgba(200, 100, 255, 0.5)';
+                    ctx.strokeStyle = 'rgba(200, 100, 255, 0.6)';
                     ctx.lineWidth = 2;
                     ctx.stroke();
                 } else {
@@ -221,13 +225,13 @@
                     this.vy = (Math.random() - 0.5) * 2;
                 } else {
                     const angle = Math.random() * Math.PI * 2;
-                    const speed = Math.random() * 2;
+                    const speed = Math.random() * 3; // Slightly faster for explosion
                     this.vx = Math.cos(angle) * speed;
                     this.vy = Math.sin(angle) * speed;
                 }
 
                 this.life = 1.0;
-                this.decay = 0.02 + Math.random() * 0.03;
+                this.decay = 0.01 + Math.random() * 0.03;
             }
 
             update() {
@@ -265,6 +269,15 @@
            PHYSICS
            ========================================= */
         function updatePhysics() {
+            // Check for Supernova
+            for (let i = stars.length - 1; i >= 0; i--) {
+                if (stars[i].mass >= CONFIG.SUPERNOVA_MASS) {
+                    triggerSupernova(i);
+                    // Star is removed in function, continue loop safely
+                    continue;
+                }
+            }
+
             // N-body integration
             for (let i = 0; i < stars.length; i++) {
                 let s1 = stars[i];
@@ -312,6 +325,38 @@
                 particles[i].update();
                 if (particles[i].life <= 0) particles.splice(i, 1);
             }
+        }
+
+        function triggerSupernova(index) {
+            let star = stars[index];
+
+            // 1. Screen Flash
+            flashIntensity = 1.0;
+
+            // 2. Explosion Particles
+            for (let k = 0; k < 100; k++) {
+                particles.push(new Particle(star.x, star.y, '#ffffff'));
+                particles.push(new Particle(star.x, star.y, '#aaaaff'));
+            }
+
+            // 3. Rebirth (Scatter small stars)
+            let newStarsCount = 8 + Math.floor(Math.random() * 5);
+            for (let k = 0; k < newStarsCount; k++) {
+                let angle = (Math.PI * 2 * k) / newStarsCount;
+                let speed = 2 + Math.random() * 3;
+
+                let vx = Math.cos(angle) * speed + star.vx * 0.5; // Inherit some momentum
+                let vy = Math.sin(angle) * speed + star.vy * 0.5;
+                let mass = CONFIG.MIN_MASS + Math.random() * 5; // Small new stars
+
+                stars.push(new Star(star.x + Math.cos(angle) * star.radius * 2, star.y + Math.sin(angle) * star.radius * 2, vx, vy, mass));
+            }
+
+            // Remove the Black Hole
+            stars.splice(index, 1);
+
+            // Console log for fun
+            console.log("SUPERNOVA!");
         }
 
         // Logic when a Black Hole is involved
@@ -468,6 +513,15 @@
             }
 
             ctx.restore();
+
+            // Screen Flash for Supernova
+            if (flashIntensity > 0.01) {
+                ctx.fillStyle = `rgba(255, 255, 255, ${flashIntensity})`;
+                ctx.fillRect(0, 0, width, height);
+                flashIntensity *= 0.90; // Fade out
+            } else {
+                flashIntensity = 0;
+            }
 
             updatePhysics();
             requestAnimationFrame(render);

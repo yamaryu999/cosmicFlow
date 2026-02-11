@@ -8,6 +8,7 @@ Experience the beauty of physics with N-body simulations, soft light trails, and
 - **N-body Gravity Simulation**: All stars interact with each other.
 - **Cosmic Aesthetics**: Deep blue space, glowing particles, and beautiful motion trails.
 - **Black Hole Evolution**: massive stars collapse into black holes, consuming everything nearby.
+- **Supernova Rebirth**: When a black hole eats too much (Mass > 150), it triggers a massive explosion that reseeds the universe with new stars.
 - **Interactive**:
     - **Drag**: Launch new stars.
     - **Right-Click Drag**: Pan the view.
