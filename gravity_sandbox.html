@@ -78,6 +78,7 @@
         <p>Drag: Hold to create (Short=Asteroid, Med=Planet, Long=Star) | Right-Drag: Pan | Wheel: Zoom</p>
         <div class="controls">
             <button id="resetBtn">Reset Cosmos</button>
+            <button id="galaxyBtn">Spawn Galaxy</button>
         </div>
     </div>
 
@@ -163,6 +164,53 @@
             flashIntensity = 0;
         }
         document.getElementById('resetBtn').addEventListener('click', reset);
+
+        function generateGalaxy() {
+            reset(); // Clear first
+
+            // 1. Central Supermassive Black Hole
+            // Mass needs to be high enough to hold galaxy, but not instant-kill everything if orbit is far
+            let centerMass = 400;
+            let bh = new Star(0, 0, 0, 0, centerMass);
+            stars.push(bh);
+
+            // 2. Spawn Stars/Planets
+            let count = 200;
+            let minDist = bh.radius * 3; // Safe zone
+            let maxDist = Math.min(width, height) * 1.5;
+
+            for (let i = 0; i < count; i++) {
+                let angle = Math.random() * Math.PI * 2;
+                // Spiral distribution: more stars closer to center, but spread out
+                let dist = minDist + (maxDist - minDist) * Math.pow(Math.random(), 2); // Bias towards center? No, let's try random
+                // Actually uniform disk is better for physics stability visualization usually
+                dist = minDist + Math.random() * (maxDist - minDist);
+
+                let x = Math.cos(angle) * dist;
+                let y = Math.sin(angle) * dist;
+
+                // Orbital Velocity: v = sqrt(GM/r) for circular orbit
+                // We need relative velocity to the BH (which is static 0,0)
+                // Tangent vector: (-sin(angle), cos(angle))
+                let velocity = Math.sqrt(CONFIG.G * centerMass / dist);
+
+                let vx = -Math.sin(angle) * velocity;
+                let vy = Math.cos(angle) * velocity;
+
+                // Random Mass: Mostly planets/asteroids, some stars
+                let mass;
+                let r = Math.random();
+                if (r < 0.6) mass = CONFIG.MIN_MASS + Math.random() * 3; // Asteroid
+                else if (r < 0.9) mass = CONFIG.ASTEROID_MASS_LIMIT + Math.random() * 10; // Planet
+                else mass = CONFIG.PLANET_MASS_LIMIT + Math.random() * 10; // Small Star
+
+                stars.push(new Star(x, y, vx, vy, mass));
+            }
+
+            // Adjust view to see whole galaxy
+            view.targetScale = 0.4;
+        }
+        document.getElementById('galaxyBtn').addEventListener('click', generateGalaxy);
 
         /* =========================================
            CLASSES
