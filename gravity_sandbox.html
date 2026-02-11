@@ -121,6 +121,7 @@
         let stars = [];
         let particles = [];
         let isPaused = false;
+        let isImploding = false; // New state for reset animation
         let flashIntensity = 0; // Screen flash for Supernova
 
         // Viewport transformation
@@ -156,12 +157,9 @@
         resize();
 
         function reset() {
-            stars = [];
-            particles = [];
-            view.x = 0;
-            view.y = 0;
-            view.targetScale = 1.0;
-            flashIntensity = 0;
+            // Trigger Implosion instead of instant clear
+            if (stars.length === 0 && particles.length === 0) return; // Already empty
+            isImploding = true;
         }
         document.getElementById('resetBtn').addEventListener('click', reset);
 
@@ -222,18 +220,71 @@
                 this.vx = vx;
                 this.vy = vy;
                 this.mass = mass;
+
+                // Rotation
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+
                 this.updateProperties();
 
-                // Color assignment based on type (only once)
-                if (this.type === 'BLACK_HOLE') {
-                    this.color = '#000000';
-                    this.glowColor = '#330066';
-                } else if (this.type === 'STAR') {
-                    this.color = CONFIG.COLORS.STAR[Math.floor(Math.random() * CONFIG.COLORS.STAR.length)];
-                } else if (this.type === 'PLANET') {
-                    this.color = CONFIG.COLORS.PLANET[Math.floor(Math.random() * CONFIG.COLORS.PLANET.length)];
-                } else { // ASTEROID
-                    this.color = CONFIG.COLORS.ASTEROID[Math.floor(Math.random() * CONFIG.COLORS.ASTEROID.length)];
+                // Procedural Features Generation
+                this.features = {
+                    seed: Math.random(),
+                    typeVariant: Math.random(), // 0-1 to pick sub-types (e.g. gas giant vs rocky)
+                    ring: Math.random() > 0.8, // 20% chance of ring for planets
+                    ringColor: 'rgba(255,255,255,0.3)',
+                    ringRadius: 1.5 + Math.random(),
+                    craters: [],
+                    stripes: []
+                };
+
+                // Generate specific features based on type
+                if (this.features.typeVariant > 0.5) { // Gas Giant Stripes
+                    let numStripes = 3 + Math.floor(Math.random() * 4);
+                    for (let i = 0; i < numStripes; i++) {
+                        this.features.stripes.push({
+                            y: (Math.random() - 0.5) * 0.8, // relative Y position
+                            height: 0.1 + Math.random() * 0.2, // relative height
+                            color: 'rgba(0,0,0,' + (0.1 + Math.random() * 0.2) + ')'
+                        });
+                    }
+                } else { // Rocky Craters
+                    let numCraters = 2 + Math.floor(Math.random() * 3);
+                    for (let i = 0; i < numCraters; i++) {
+                        this.features.craters.push({
+                            x: (Math.random() - 0.5) * 0.6,
+                            y: (Math.random() - 0.5) * 0.6,
+                            r: 0.1 + Math.random() * 0.15
+                        });
+                    }
+                }
+
+                // Asteroid Shape (Jagged Polygon)
+                if (this.type === 'ASTEROID') {
+                    this.features.vertices = [];
+                    let numVerts = 5 + Math.floor(Math.random() * 4);
+                    for (let i = 0; i < numVerts; i++) {
+                        let angle = (i / numVerts) * Math.PI * 2;
+                        let r = 0.8 + Math.random() * 0.4; // Radius variance
+                        this.features.vertices.push({
+                            x: Math.cos(angle) * r,
+                            y: Math.sin(angle) * r
+                        });
+                    }
+                }
+
+                // Initial Color Assignment if not set
+                if (!this.color) {
+                    if (this.type === 'BLACK_HOLE') {
+                        this.color = '#000000';
+                        this.glowColor = '#330066';
+                    } else if (this.type === 'STAR') {
+                        this.color = CONFIG.COLORS.STAR[Math.floor(Math.random() * CONFIG.COLORS.STAR.length)];
+                    } else if (this.type === 'PLANET') {
+                        this.color = CONFIG.COLORS.PLANET[Math.floor(Math.random() * CONFIG.COLORS.PLANET.length)];
+                    } else { // ASTEROID
+                        this.color = CONFIG.COLORS.ASTEROID[Math.floor(Math.random() * CONFIG.COLORS.ASTEROID.length)];
+                    }
                 }
             }
 
@@ -260,51 +311,151 @@
             update() {
                 this.x += this.vx;
                 this.y += this.vy;
+                this.rotation += this.rotationSpeed;
             }
 
             draw(ctx) {
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
 
                 if (this.type === 'BLACK_HOLE') {
-                    // Pulsating Accretion Disk
+                    // Pulsating Accretion Disk - Better
                     let pulse = 1.0 + Math.sin(Date.now() * 0.005) * 0.1;
+
+                    // Outer Glow
                     ctx.shadowBlur = this.radius * 4 * pulse;
                     ctx.shadowColor = 'rgba(120, 50, 255, 0.8)';
 
-                    // Draw Event Horizon (Black)
-                    ctx.fillStyle = '#000';
+                    // Accretion Disk (Spiral)
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.radius * 1.5, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(50, 0, 100, 0.5)';
                     ctx.fill();
 
-                    // Draw Outline
-                    ctx.strokeStyle = 'rgba(200, 100, 255, 0.6)';
-                    ctx.lineWidth = 2;
+                    // Event Horizon (Black)
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = '#000';
+                    ctx.shadowBlur = 0; // Black center has no glow itself
+                    ctx.fill();
+
+                    // Photon Ring (White outline)
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                    ctx.strokeStyle = 'rgba(200, 200, 255, 0.8)';
+                    ctx.lineWidth = 1;
                     ctx.stroke();
+
                 } else if (this.type === 'STAR') {
-                    // STAR: Glowing
+                    // STAR: Glowing Corona
+                    let pulse = 1.0 + Math.sin(Date.now() * 0.01 + this.features.seed * 10) * 0.05;
+
+                    // Corona Layer
+                    ctx.globalAlpha = 0.4;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.radius * (1.2 + pulse), 0, Math.PI * 2);
                     ctx.fillStyle = this.color;
+                    ctx.fill();
+                    ctx.globalAlpha = 1.0;
+
+                    // Core
                     ctx.shadowBlur = this.radius * 2;
                     ctx.shadowColor = this.color;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = '#fff'; // Bright core
                     ctx.fill();
+
+                    // Tint over core
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = this.color;
+                    ctx.globalAlpha = 0.8;
+                    ctx.fill();
+                    ctx.globalAlpha = 1.0;
+
                 } else if (this.type === 'PLANET') {
-                    // PLANET: No glow, solid
+                    ctx.rotate(this.rotation);
+
+                    // Base Body
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
                     ctx.fillStyle = this.color;
                     ctx.shadowBlur = 0;
                     ctx.fill();
-                    // Slight gradient for 3D effect?
-                    let grad = ctx.createRadialGradient(this.x - this.radius * 0.3, this.y - this.radius * 0.3, this.radius * 0.2, this.x, this.y, this.radius);
-                    grad.addColorStop(0, 'rgba(255,255,255,0.3)');
-                    grad.addColorStop(1, 'rgba(0,0,0,0.1)');
+
+                    // Clip to circle for details
+                    ctx.save();
+                    ctx.clip();
+
+                    // Details: Stripes or Craters
+                    if (this.features.typeVariant > 0.5) {
+                        // Stripes
+                        for (let s of this.features.stripes) {
+                            ctx.fillStyle = s.color;
+                            let yPos = s.y * this.radius;
+                            let h = s.height * this.radius;
+                            ctx.fillRect(-this.radius, yPos, this.radius * 2, h);
+                        }
+                    } else {
+                        // Craters
+                        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                        for (let c of this.features.craters) {
+                            ctx.beginPath();
+                            ctx.arc(c.x * this.radius, c.y * this.radius, c.r * this.radius, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
+
+                    // Atmosphere/Shadow Gradient (3D look)
+                    let grad = ctx.createRadialGradient(-this.radius * 0.3, -this.radius * 0.3, this.radius * 0.2, 0, 0, this.radius);
+                    grad.addColorStop(0, 'rgba(255,255,255,0.2)');
+                    grad.addColorStop(1, 'rgba(0,0,0,0.4)');
                     ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
                     ctx.fill();
+
+                    ctx.restore(); // End Clip
+
+                    // Ring?
+                    if (this.features.ring && this.type === 'PLANET') {
+                        ctx.beginPath();
+                        ctx.ellipse(0, 0, this.radius * 2.0, this.radius * 0.4, 0, 0, Math.PI * 2);
+                        ctx.strokeStyle = this.features.ringColor;
+                        ctx.lineWidth = this.radius * 0.2;
+                        ctx.stroke();
+                    }
+
                 } else {
-                    // ASTEROID: Jagged? For now just small circle, rougher color
-                    ctx.fillStyle = this.color;
+                    // ASTEROID: Jagged Polygon
+                    ctx.rotate(this.rotation);
                     ctx.shadowBlur = 0;
+                    ctx.fillStyle = this.color;
+
+                    ctx.beginPath();
+                    if (this.features.vertices && this.features.vertices.length > 0) {
+                        let v0 = this.features.vertices[0];
+                        ctx.moveTo(v0.x * this.radius, v0.y * this.radius);
+                        for (let k = 1; k < this.features.vertices.length; k++) {
+                            let v = this.features.vertices[k];
+                            ctx.lineTo(v.x * this.radius, v.y * this.radius);
+                        }
+                    } else {
+                        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                    }
+                    ctx.closePath();
                     ctx.fill();
+
+                    // Rough shading
+                    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
                 }
 
                 ctx.shadowBlur = 0; // Reset
+                ctx.restore();
             }
         }
 
@@ -365,6 +516,18 @@
            PHYSICS
            ========================================= */
         function updatePhysics() {
+            // Check for Implosion Reset
+            if (isImploding) {
+                updateImplosion();
+                return; // Skip normal physics
+            }
+
+            // Check for Implosion Reset
+            if (isImploding) {
+                updateImplosion();
+                return; // Skip normal physics
+            }
+
             // Check for Supernova
             for (let i = stars.length - 1; i >= 0; i--) {
                 if (stars[i].mass >= CONFIG.SUPERNOVA_MASS) {
@@ -533,6 +696,49 @@
             }
         }
 
+
+        function updateImplosion() {
+            // Pull everything to center violently
+            let centerX = 0;
+            let centerY = 0;
+
+            for (let i = stars.length - 1; i >= 0; i--) {
+                let s = stars[i];
+                let dx = centerX - s.x;
+                let dy = centerY - s.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+
+                // Strong Pull
+                s.x += dx * 0.1;
+                s.y += dy * 0.1;
+
+                // Shrink
+                s.radius *= 0.9;
+
+                // Remove if close/small
+                if (dist < 10 || s.radius < 0.5) {
+                    stars.splice(i, 1);
+                }
+            }
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                let dx = centerX - p.x;
+                let dy = centerY - p.y;
+                p.x += dx * 0.15;
+                p.y += dy * 0.15;
+                if (Math.abs(dx) < 10 && Math.abs(dy) < 10) particles.splice(i, 1);
+            }
+
+            // End condition
+            if (stars.length === 0 && particles.length === 0) {
+                isImploding = false;
+                view.targetScale = 1.0;
+                view.x = 0;
+                view.y = 0;
+            }
+        }
+
         /* =========================================
            RENDERING
            ========================================= */
@@ -572,16 +778,37 @@
                 let currentWorld = screenToWorld(mouse.x, mouse.y);
 
                 // Prediction Line
+                // Launch Velocity
+                let dx = mouse.startX - mouse.x;
+                let dy = mouse.startY - mouse.y;
+                let vx = dx * CONFIG.LAUNCH_POWER / view.scale;
+                let vy = dy * CONFIG.LAUNCH_POWER / view.scale;
+
+                // Preview Mass Logic (duplicated from mouseup for prediction)
+                let duration = (Date.now() - mouse.dragStartTime) / 1000;
+                let mass;
+                if (duration < 0.5) {
+                    mass = CONFIG.MIN_MASS + (CONFIG.ASTEROID_MASS_LIMIT - CONFIG.MIN_MASS) * (duration / 0.5);
+                } else if (duration < 2.0) {
+                    mass = CONFIG.ASTEROID_MASS_LIMIT + (CONFIG.PLANET_MASS_LIMIT - CONFIG.ASTEROID_MASS_LIMIT) * ((duration - 0.5) / 1.5);
+                } else {
+                    mass = CONFIG.PLANET_MASS_LIMIT + (CONFIG.STAR_MASS_LIMIT - CONFIG.PLANET_MASS_LIMIT) * Math.min((duration - 2.0) / 3.0, 1);
+                }
+
+                // Calculate Trajectory
+                let path = predictTrajectory(startWorld.x, startWorld.y, vx, vy, mass);
+
+                // Draw Computed Trajectory
                 ctx.beginPath();
                 ctx.moveTo(startWorld.x, startWorld.y);
-                ctx.lineTo(currentWorld.x, currentWorld.y);
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                for (let pt of path) {
+                    ctx.lineTo(pt.x, pt.y);
+                }
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
                 ctx.setLineDash([5, 5]);
                 ctx.stroke();
 
                 // Vector
-                let dx = mouse.startX - mouse.x;
-                let dy = mouse.startY - mouse.y;
                 let vecX = dx * CONFIG.LAUNCH_POWER * 20;
                 let vecY = dy * CONFIG.LAUNCH_POWER * 20;
 
@@ -593,22 +820,6 @@
                 ctx.lineWidth = 2;
                 ctx.stroke();
                 ctx.lineWidth = 1;
-
-                // Preview Mass
-                let duration = (Date.now() - mouse.dragStartTime) / 1000; // Seconds
-                // Scale mass creation: 
-                // 0-0.5s -> Asteroid (1-5)
-                // 0.5-2.0s -> Planet (5-20)
-                // 2.0s+ -> Star (20-80)
-
-                let mass;
-                if (duration < 0.5) {
-                    mass = CONFIG.MIN_MASS + (CONFIG.ASTEROID_MASS_LIMIT - CONFIG.MIN_MASS) * (duration / 0.5);
-                } else if (duration < 2.0) {
-                    mass = CONFIG.ASTEROID_MASS_LIMIT + (CONFIG.PLANET_MASS_LIMIT - CONFIG.ASTEROID_MASS_LIMIT) * ((duration - 0.5) / 1.5);
-                } else {
-                    mass = CONFIG.PLANET_MASS_LIMIT + (CONFIG.STAR_MASS_LIMIT - CONFIG.PLANET_MASS_LIMIT) * Math.min((duration - 2.0) / 3.0, 1);
-                }
 
                 // Determine density for preview radius
                 let density = CONFIG.DENSITY;
@@ -714,6 +925,49 @@
         /* =========================================
            START
            ========================================= */
+        function predictTrajectory(startX, startY, vx, vy, mass) {
+            let path = [];
+            let x = startX;
+            let y = startY;
+            let pVx = vx;
+            let pVy = vy;
+
+            // Simulation steps (e.g., 60 frames = 1 second)
+            let steps = 120;
+
+            for (let k = 0; k < steps; k++) {
+                path.push({ x, y });
+
+                // Calculate forces from existing stars (Simple Gravity)
+                // Optimisation: Only calculate for massive bodies if too many starts
+                let relevantStars = stars;
+                if (stars.length > 50) {
+                    // Filter only big stars/black holes for performance? 
+                    // Or just skip prediction if too many. Let's try full N-body for now, but limited steps.
+                    // 120 * 200 = 24000 checks, might be heavy.
+                }
+
+                for (let s of stars) {
+                    let dx = s.x - x;
+                    let dy = s.y - y;
+                    let distSq = dx * dx + dy * dy;
+                    let dist = Math.sqrt(distSq);
+
+                    if (dist > s.radius + 5) { // Avoid division by zero and sticking
+                        let force = (CONFIG.G * mass * s.mass) / distSq;
+                        let ax = force * (dx / dist);
+                        let ay = force * (dy / dist);
+                        pVx += ax / mass;
+                        pVy += ay / mass;
+                    }
+                }
+
+                x += pVx;
+                y += pVy;
+            }
+            return path;
+        }
+
         // Create initial scenario: One normal star and one near-BH threshold star to test evolution easily?
         // Let's just do standard random
         for (let i = 0; i < 5; i++) {
