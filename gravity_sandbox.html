@@ -142,6 +142,33 @@
         };
 
         /* =========================================
+           ASSETS
+           ========================================= */
+        const ASSETS = {
+            STAR: new Image(),
+            GAS_GIANT: new Image(),
+            ROCKY_PLANET: new Image(),
+            SPACE_BG: new Image()
+        };
+
+        ASSETS.STAR.src = 'assets/star_texture.png';
+        ASSETS.GAS_GIANT.src = 'assets/gas_giant_texture.png';
+        ASSETS.ROCKY_PLANET.src = 'assets/rocky_planet_texture.png';
+        ASSETS.SPACE_BG.src = 'assets/space_background.png';
+
+        // Track loading
+        let assetsLoaded = 0;
+        const totalAssets = 4;
+        function onAssetLoad() {
+            assetsLoaded++;
+            if (assetsLoaded === totalAssets) console.log("All assets loaded");
+        }
+        ASSETS.STAR.onload = onAssetLoad;
+        ASSETS.GAS_GIANT.onload = onAssetLoad;
+        ASSETS.ROCKY_PLANET.onload = onAssetLoad;
+        ASSETS.SPACE_BG.onload = onAssetLoad;
+
+        /* =========================================
            INIT & RESIZE
            ========================================= */
         function resize() {
@@ -225,8 +252,6 @@
                 this.rotation = Math.random() * Math.PI * 2;
                 this.rotationSpeed = (Math.random() - 0.5) * 0.1;
 
-                this.updateProperties();
-
                 // Procedural Features Generation
                 this.features = {
                     seed: Math.random(),
@@ -237,6 +262,8 @@
                     craters: [],
                     stripes: []
                 };
+
+                this.updateProperties();
 
                 // Generate specific features based on type
                 if (this.features.typeVariant > 0.5) { // Gas Giant Stripes
@@ -321,6 +348,13 @@
                 if (this.type === 'PLANET') density *= 1.5;   // Rocky planets are dense-ish
                 this.radius = Math.sqrt(this.mass / density);
                 this.isBlackHole = (this.type === 'BLACK_HOLE'); // Keep for compatibility
+
+                // Textures assignment
+                if (this.type === 'STAR') {
+                    this.texture = ASSETS.STAR;
+                } else if (this.type === 'PLANET') {
+                    this.texture = (this.features.typeVariant > 0.5) ? ASSETS.GAS_GIANT : ASSETS.ROCKY_PLANET;
+                }
             }
 
             update() {
@@ -379,8 +413,18 @@
                     ctx.shadowColor = this.color;
                     ctx.beginPath();
                     ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-                    ctx.fillStyle = '#fff'; // Bright core
-                    ctx.fill();
+
+                    if (this.texture && this.texture.complete) {
+                        ctx.save();
+                        ctx.clip();
+                        // Draw Texture - rotated by star rotation
+                        ctx.rotate(this.rotation);
+                        ctx.drawImage(this.texture, -this.radius, -this.radius, this.radius * 2, this.radius * 2);
+                        ctx.restore();
+                    } else {
+                        ctx.fillStyle = '#fff'; // Fallback
+                        ctx.fill();
+                    }
 
                     // Tint over core
                     ctx.beginPath();
@@ -450,7 +494,16 @@
                     ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
                     ctx.fillStyle = this.color;
                     ctx.shadowBlur = 0;
-                    ctx.fill();
+                    ctx.fill(); // Fill color as base (underneath texture) or fallback
+
+                    // Draw Texture if available
+                    if (this.texture && this.texture.complete) {
+                        ctx.save();
+                        ctx.clip();
+                        ctx.rotate(this.rotation); // Rotate texture with planet
+                        ctx.drawImage(this.texture, -this.radius, -this.radius, this.radius * 2, this.radius * 2);
+                        ctx.restore();
+                    }
 
                     // Clip to circle for details
                     ctx.save();
@@ -823,9 +876,38 @@
             view.scale += (view.targetScale - view.scale) * 0.1;
 
             // BACKGROUND with distortion hint for Black Holes?
-            // Simple approach: Clear with trail fade
-            ctx.fillStyle = `rgba(5, 5, 16, ${CONFIG.TRAIL_FADE})`;
+            // Background
+            if (ASSETS.SPACE_BG && ASSETS.SPACE_BG.complete) {
+                // Create a pattern or just draw it to cover screen?
+                // Pattern is better for infinite pans but this is a fixed view usually
+                // Let's just draw it large or tiled. For now, simple cover.
+                // Actually, let's tile it 2x2 or simply draw it to fill screen relative to parallax?
+                // Simple full screen draw for prototype
+                ctx.save();
+                ctx.globalAlpha = 0.5; // Darken it a bit
+                // Draw simplified background
+                // If we want it to move with camera we need more complex logic.
+                // For now static background is fine or standard clear.
+                // Let's draw it covering the screen.
+                // We need to draw it in screen space, which is 0,0 to width,height
+                // But this is inside render() which has view transform? No, view transform is applied later?
+                // Wait, render() applies ctx.setTransform for objects. Background should be drawn BEFORE transform or with identity.
+            }
+
+            // Clear Screen
+            ctx.fillStyle = '#050510';
             ctx.fillRect(0, 0, width, height);
+
+            if (ASSETS.SPACE_BG && ASSETS.SPACE_BG.complete) {
+                ctx.save();
+                ctx.globalAlpha = 0.3;
+                // Draw background image scaling to cover
+                let ratio = Math.max(width / ASSETS.SPACE_BG.width, height / ASSETS.SPACE_BG.height);
+                let dw = ASSETS.SPACE_BG.width * ratio;
+                let dh = ASSETS.SPACE_BG.height * ratio;
+                ctx.drawImage(ASSETS.SPACE_BG, (width - dw) / 2, (height - dh) / 2, dw, dh);
+                ctx.restore();
+            }
 
             ctx.save();
 
